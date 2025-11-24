@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>T.A.M. – Admin Pending Jobs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Supabase JS desde CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+      body {
+        margin: 0;
+        background: #020617;
+        color: #e5e7eb;
+        font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      }
+      header {
+        padding: 16px 24px;
+        border-bottom: 1px solid #1f2933;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 8px 0;
+      }
+      .subtitle {
+        color: #9ca3af;
+        font-size: 14px;
+      }
+      button {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid #4b5563;
+        background: #111827;
+        color: #e5e7eb;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      button:disabled {
+        background: #1f2937;
+        cursor: default;
+        opacity: 0.7;
+      }
+      .toolbar {
+        margin: 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .info {
+        font-size: 13px;
+        color: #9ca3af;
+      }
+      .error {
+        margin: 16px 0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: #7f1d1d;
+        color: #fee2e2;
+        font-size: 13px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #111827;
+      }
+      th {
+        text-align: left;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #9ca3af;
+        font-size: 11px;
+        background: #0b1120;
+      }
+      tr.generated {
+        background: #022c22;
+      }
+      a.link {
+        color: #38bdf8;
+        text-decoration: none;
+      }
+      a.link:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div style="font-weight:600;letter-spacing:0.08em;font-size:14px;text-transform:uppercase;color:#38bdf8;">
+        T.A.M. / Admin
+      </div>
+      <nav style="font-size:14px;display:flex;gap:16px;color:#9ca3af;">
+        <a href="/" class="link" style="color:inherit;">Home</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Pending NFT Jobs</h1>
+      <div class="subtitle">
+        Panel interno para ver y disparar la generación de imágenes NFT.
+      </div>
+
+      <div class="toolbar">
+        <button id="refreshBtn">Refresh list</button>
+        <span id="jobsCount" class="info">Cargando...</span>
+      </div>
+
+      <div id="errorBox" class="error" style="display:none;"></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>NFT #</th>
+            <th>Rarity</th>
+            <th>Status</th>
+            <th>Image</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="jobsBody">
+          <tr>
+            <td colspan="6" style="text-align:center;color:#6b7280;padding:16px;">
+              Cargando...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <script>
+      // 1) Configuración: rellena estos valores desde tu Supabase y backend
+      const SUPABASE_URL = "PON_AQUI_SUPABASE_URL";
+      const SUPABASE_ANON_KEY = "PON_AQUI_SUPABASE_ANON_KEY";
+      const BACKEND_URL = "https://tam-backend-j77ptv1r3-anontams-projects.vercel.app"; // AJUSTA A TU URL ESTABLE
+
+      const { createClient } = window.supabase;
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      const refreshBtn = document.getElementById("refreshBtn");
+      const jobsBody = document.getElementById("jobsBody");
+      const jobsCount = document.getElementById("jobsCount");
+      const errorBox = document.getElementById("errorBox");
+
+      let runningId = null;
+
+      async function fetchJobs() {
+        try {
+          errorBox.style.display = "none";
+          errorBox.textContent = "";
+          refreshBtn.disabled = true;
+          refreshBtn.textContent = "Refreshing…";
+
+          const { data, error } = await supabase
+            .from("nfts_pending_generation")
+            .select("id, nft_number, rarity, status, image_url")
+            .order("nft_number", { ascending: true });
+
+          if (error) {
+            console.error("Supabase error:", error);
+            showError(error.message);
+            return;
+          }
+
+          renderJobs(data || []);
+        } catch (e) {
+          console.error("Unexpected error:", e);
+          showError(e.message || "Unexpected error");
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = "Refresh list";
+        }
+      }
+
+      function renderJobs(jobs) {
+        jobsBody.innerHTML = "";
+        jobsCount.textContent = jobs.length + " jobs en nfts_pending_generation";
+
+        if (jobs.length === 0) {
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 6;
+          td.style.textAlign = "center";
+          td.style.color = "#6b7280";
+          td.style.padding = "16px";
+          td.textContent = "No hay registros.";
+          tr.appendChild(td);
+          jobsBody.appendChild(tr);
+          return;
+        }
+
+        jobs.forEach((job, idx) => {
+          const tr = document.createElement("tr");
+          if (job.status === "generated") {
+            tr.classList.add("generated");
+          }
+
+          const tdIndex = document.createElement("td");
+          tdIndex.textContent = String(idx + 1);
+          const tdNumber = document.createElement("td");
+          tdNumber.textContent = String(job.nft_number);
+          const tdRarity = document.createElement("td");
+          tdRarity.textContent = job.rarity;
+          const tdStatus = document.createElement("td");
+          tdStatus.textContent = job.status;
+
+          const tdImage = document.createElement("td");
+          if (job.image_url) {
+            const link = document.createElement("a");
+            link.href = job.image_url;
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = "open";
+            link.className = "link";
+            tdImage.appendChild(link);
+          } else {
+            tdImage.textContent = "—";
+            tdImage.style.color = "#6b7280";
+          }
+
+          const tdActions = document.createElement("td");
+          const btn = document.createElement("button");
+          btn.textContent =
+            job.status === "generated"
+              ? "Generated"
+              : runningId === job.id
+              ? "Generating..."
+              : "Generate";
+          btn.disabled =
+            job.status === "generated" || runningId === job.id;
+
+          btn.addEventListener("click", () => handleGenerate(job.id));
+
+          tdActions.appendChild(btn);
+
+          tr.appendChild(tdIndex);
+          tr.appendChild(tdNumber);
+          tr.appendChild(tdRarity);
+          tr.appendChild(tdStatus);
+          tr.appendChild(tdImage);
+          tr.appendChild(tdActions);
+
+          jobsBody.appendChild(tr);
+        });
+      }
+
+      async function handleGenerate(id) {
+        try {
+          runningId = id;
+          await updateUIStatus();
+
+          const res = await fetch(BACKEND_URL + "/api/pending-process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+          });
+
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            console.error("Backend error:", json);
+            showError(json.error || "Backend error");
+            return;
+          }
+
+          // Recargar lista tras generar
+          await fetchJobs();
+        } catch (e) {
+          console.error("Unexpected error:", e);
+          showError(e.message || "Unexpected error");
+        } finally {
+          runningId = null;
+          await updateUIStatus();
+        }
+      }
+
+      async function updateUIStatus() {
+        // Simplemente recarga la lista para reflejar cambios de botón
+        await fetchJobs();
+      }
+
+      function showError(msg) {
+        errorBox.style.display = "block";
+        errorBox.textContent = "Error: " + msg;
+      }
+
+      refreshBtn.addEventListener("click", fetchJobs);
+
+      // Carga inicial
+      fetchJobs();
+    </script>
+  </body>
+</html>
